@@ -8,65 +8,86 @@
       <button @click="resetColumns">Reset Columns</button>
     </div>
 
-    <DataTable
-      :view="tableView"
-      :dragging="dragging"
-      :dragIndicatorStyle="dragIndicatorStyle"
-      ref="dataTable"
-    >
-      <template v-if="tableView === 'horizontal'">
-        <DataRow>
-          <DataHeaderCell
-            v-for="(header, index) in currentHeaders"
-            :key="header.key"
-            :label="header.label"
-            :index="index"
-            :width="columnWidths[index] || 120"
-            :columns-count="currentHeaders.length"
-            :columns-order="currentHeaders"
-            @remove-column="removeColumn"
-            @column-reorder="onColumnReorder"
-            @drag-start="onDragStart"
-            @drag-move="onDragMove"
-            @drag-end="onDragEnd"
-          />
-        </DataRow>
-        <DataRow v-for="(row, rowIndex) in rows" :key="rowIndex">
-          <DataCell
-            v-for="(header) in currentHeaders"
-            :key="header.key"
-          >
-            {{ row[header.originalIndex] }}
-          </DataCell>
-        </DataRow>
-      </template>
+    <DataTablePagination :rows="filteredRows" :defaultPerPage="5" :perPageOptions="[5, 10, 15]">
+      <template #default="{ paginatedRows }">
+        <DataTable
+          :view="tableView"
+          :dragging="dragging"
+          :dragIndicatorStyle="dragIndicatorStyle"
+          ref="dataTable"
+        >
+          <template v-if="tableView === 'horizontal'">
+            <DataRow>
+              <DataHeaderCell
+                v-for="(header, index) in currentHeaders"
+                :key="header.key"
+                :label="header.label"
+                :index="index"
+                :width="columnWidths[index] || 120"
+                :columns-count="currentHeaders.length"
+                :columns-order="currentHeaders"
+                @remove-column="removeColumn"
+                @column-reorder="onColumnReorder"
+                @drag-start="onDragStart"
+                @drag-move="onDragMove"
+                @drag-end="onDragEnd"
+              />
+            </DataRow>
+            <DataRow v-for="(row, rowIndex) in paginatedRows" :key="rowIndex">
+              <DataCell
+                v-for="(header) in currentHeaders"
+                :key="header.key"
+              >
+                {{ row[header.originalIndex] }}
+              </DataCell>
+            </DataRow>
+            <DataTableFilter
+              view="horizontal"
+              :headers="currentHeaders"
+              :filters="filters"
+              :skipIndices="[0]"
+              @filter-change="onFilterChange"
+            />
+          </template>
 
-      <template v-else>
-        <!-- Vertical view: transpose -->
-        <DataRow v-for="(header, colIndex) in currentHeaders" :key="header.key">
-          <DataHeaderCell
-            :label="header.label"
-            :index="colIndex"
-            :width="columnWidths[colIndex] || 120"
-            :columns-count="currentHeaders.length"
-            :columns-order="currentHeaders"
-            @remove-column="removeColumn"
-            @column-reorder="onColumnReorder"
-            @drag-start="onDragStart"
-            @drag-move="onDragMove"
-            @drag-end="onDragEnd"
-          />
-          <DataCell v-for="(row, rowIndex) in rows" :key="rowIndex">
-            {{ row[header.originalIndex] }}
-          </DataCell>
-        </DataRow>
+          <template v-else>
+            <!-- Vertical view: transpose -->
+            <DataRow v-for="(header, colIndex) in currentHeaders" :key="header.key">
+              <DataHeaderCell
+                :label="header.label"
+                :index="colIndex"
+                :width="columnWidths[colIndex] || 120"
+                :columns-count="currentHeaders.length"
+                :columns-order="currentHeaders"
+                @remove-column="removeColumn"
+                @column-reorder="onColumnReorder"
+                @drag-start="onDragStart"
+                @drag-move="onDragMove"
+                @drag-end="onDragEnd"
+              />
+              <DataCell v-for="(row, rowIndex) in paginatedRows" :key="rowIndex">
+                {{ row[header.originalIndex] }}
+              </DataCell>
+              <DataTableFilter
+                view="vertical"
+                :filters="filters"
+                :skipIndices="[0]"
+                :columnIndex="colIndex"
+                :filterKey="header.key"
+                @filter-change="onFilterChange"
+              />
+            </DataRow>
+          </template>
+        </DataTable>
       </template>
-    </DataTable>
+    </DataTablePagination>
   </div>
 </template>
 
 <script>
 import DataTable from "./DataTable.vue";
+import DataTablePagination from "./DataTablePagination.vue";
+import DataTableFilter from "./DataTableFilter.vue";
 import DataRow from "./DataRow.vue";
 import DataHeaderCell from "./DataHeaderCell.vue";
 import DataCell from "./DataCell.vue";
@@ -75,6 +96,8 @@ export default {
   name: "ExampleTable",
   components: {
     DataTable,
+    DataTablePagination,
+    DataTableFilter,
     DataRow,
     DataHeaderCell,
     DataCell,
@@ -114,10 +137,27 @@ export default {
         [14, "Anna", 25, "anna@example.com", "Australia", "Intern", "Marketing", "2021-03-22", "Active", "$34000", "555-7788"],
         [15, "Luke", 29, "luke@example.com", "New Zealand", "Developer", "IT", "2015-12-03", "Active", "$72000", "555-9900"],
       ],
+      filters: {},
       dragging: false,
       dragIndicatorStyle: null,
       columnWidths: [],
     };
+  },
+  computed: {
+    filteredRows() {
+      const activeFilters = Object.entries(this.filters).filter(
+        ([, value]) => value && value.trim() !== ""
+      );
+      if (activeFilters.length === 0) return this.rows;
+      return this.rows.filter((row) =>
+        activeFilters.every(([key, filterValue]) => {
+          const header = this.initialHeaders.find((h) => h.key === key);
+          if (!header) return true;
+          const cellValue = String(row[header.originalIndex]).toLowerCase();
+          return cellValue.includes(filterValue.trim().toLowerCase());
+        })
+      );
+    },
   },
   watch: {
     currentHeaders() {
@@ -139,7 +179,11 @@ export default {
     },
     resetColumns() {
       this.currentHeaders = [...this.initialHeaders];
+      this.filters = {};
       this.dragIndicatorStyle = null;
+    },
+    onFilterChange({ key, value }) {
+      this.filters = { ...this.filters, [key]: value };
     },
     removeColumn(index) {
       this.currentHeaders.splice(index, 1);
