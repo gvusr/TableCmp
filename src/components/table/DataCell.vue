@@ -1,3 +1,4 @@
+//DataCell.vue
 <template>
   <td class="data-cell">
     <slot></slot>
